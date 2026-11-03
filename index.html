@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core of a 3-Player TU Game</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f6f3; --panel:#ffffff; --ink:#1c1c1f; --muted:#6b6b72; --line:#e2e2de;
+    --accent:#2f6fdb; --ok:#1f8a4c; --bad:#c0392b; --core:#ff2d7a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#121214; --panel:#1b1b1f; --ink:#ececef; --muted:#9a9aa3; --line:#2d2d33;
+      --accent:#6ea0ff; --ok:#4cc38a; --bad:#ff6b5e; --core:#ff4f93;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .app{display:grid;grid-template-columns:360px 1fr;height:100vh}
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:18px 18px 28px}
+  main{position:relative;min-height:0}
+  #plot{position:absolute;inset:0}
+  h1{font-size:18px;margin:0 0 4px}
+  h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px;font-weight:600}
+  p.sub{margin:0;color:var(--muted);font-size:13px}
+  .row{display:grid;grid-template-columns:72px 1fr 70px;gap:10px;align-items:center;margin:6px 0}
+  .row label{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  .row.grand label{font-weight:700}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number]{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+  .sep{border-top:1px dashed var(--line);margin:10px 0}
+  select,button{font:inherit;font-size:13px;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+  button:hover,select:hover{border-color:var(--accent)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .toggles label{display:flex;gap:8px;align-items:center;margin:5px 0;cursor:pointer}
+  .status{padding:10px 12px;border-radius:8px;font-weight:600;margin-bottom:8px}
+  .status.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .status.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+  ul.conds{list-style:none;padding:0;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  ul.conds li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)}
+  .y{color:var(--ok)} .n{color:var(--bad)}
+  table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  td,th{padding:3px 4px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:500}
+  .defs{font-size:13px;color:var(--muted)}
+  .defs code{color:var(--ink)}
+  @media (max-width:860px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto 70vh;height:auto}
+    aside{border-right:none;border-bottom:1px solid var(--line)}
+    main{height:70vh}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Core of a 3-player TU game</h1>
+    <p class="sub">Set the worth of every coalition. The core is shaded on the efficiency plane x₁+x₂+x₃ = v(N).</p>
+
+    <h2>Presets</h2>
+    <div class="btns">
+      <select id="preset">
+        <option value="">Choose a game…</option>
+      </select>
+    </div>
+
+    <h2>Coalition worths</h2>
+    <div id="controls"></div>
+
+    <h2>Display</h2>
+    <div class="toggles">
+      <label><input type="checkbox" id="tPlanes" checked> Constraint planes (3D)</label>
+      <label><input type="checkbox" id="tLines" checked> Constraint lines on efficiency plane</label>
+      <label><input type="checkbox" id="tEff" checked> Efficiency plane</label>
+      <label><input type="checkbox" id="tImp" checked> Imputation set</label>
+      <label><input type="checkbox" id="tShap" checked> Shapley value</label>
+    </div>
+    <div class="btns" style="margin-top:10px">
+      <button id="viewNormal">Look straight at the plane</button>
+      <button id="viewReset">Reset view</button>
+    </div>
+
+    <h2>Core</h2>
+    <div id="status"></div>
+    <ul class="conds" id="conds"></ul>
+    <div id="vertices" style="margin-top:10px"></div>
+
+    <h2>Definitions</h2>
+    <div class="defs">
+      <p>The core is the set of allocations <code>x = (x₁,x₂,x₃)</code> with</p>
+      <p><code>x₁+x₂+x₃ = v(N)</code> (efficiency)<br>
+      <code>xᵢ ≥ v({i})</code> for each i<br>
+      <code>xᵢ+xⱼ ≥ v({i,j})</code> for each pair</p>
+      <p>Each inequality is a half-space bounded by a plane; on the efficiency plane each boundary becomes a line. The core is the intersection of the six half-planes with the efficiency plane.</p>
+    </div>
+  </aside>
+  <main><div id="plot"></div></main>
+</div>
+
+<script>
+/* ---------- Game data ---------- */
+const KEYS = ['1','2','3','12','13','23','123'];
+const LABEL = {'1':'v({1})','2':'v({2})','3':'v({3})','12':'v({1,2})','13':'v({1,3})','23':'v({2,3})','123':'v(N)'};
+let v = {'1':0,'2':0,'3':0,'12':6,'13':5,'23':4,'123':10};
+
+const PRESETS = {
+  'Example (non-empty core)':        {'1':0,'2':0,'3':0,'12':6,'13':5,'23':4,'123':10},
+  'Symmetric, small core':           {'1':0,'2':0,'3':0,'12':6,'13':6,'23':6,'123':9.5},
+  'Majority game (empty core)':      {'1':0,'2':0,'3':0,'12':1,'13':1,'23':1,'123':1},
+  'Glove market (core is a point)':  {'1':0,'2':0,'3':0,'12':1,'13':1,'23':0,'123':1},
+  'Additive game (core is a point)': {'1':1,'2':2,'3':3,'12':3,'13':4,'23':5,'123':6},
+  'Non-zero singletons':             {'1':1,'2':2,'3':0,'12':5,'13':4,'23':6,'123':12}
+};
+
+const CCOL = {c1:'#e4572e', c2:'#f2a541', c3:'#4caf50', c12:'#3a86ff', c13:'#9b5de5', c23:'#00a8a8'};
+
+/* ---------- Controls ---------- */
+const controls = document.getElementById('controls');
+const inputs = {};
+KEYS.forEach((k,idx) => {
+  if (idx === 3 || idx === 6) controls.appendChild(Object.assign(document.createElement('div'),{className:'sep'}));
+  const row = document.createElement('div');
+  row.className = 'row' + (k==='123' ? ' grand' : '');
+  row.innerHTML = `<label for="r${k}">${LABEL[k]}</label>
+    <input type="range" id="r${k}" min="-10" max="30" step="0.1">
+    <input type="number" id="n${k}" step="0.1">`;
+  controls.appendChild(row);
+  const r = row.querySelector('input[type=range]'), n = row.querySelector('input[type=number]');
+  inputs[k] = {r,n};
+  r.addEventListener('input', () => { v[k] = +r.value; n.value = r.value; update(); });
+  n.addEventListener('input', () => {
+    const x = parseFloat(n.value); if (!isFinite(x)) return;
+    if (x < +r.min) r.min = Math.floor(x); if (x > +r.max) r.max = Math.ceil(x);
+    r.value = x; v[k] = x; update();
+  });
+});
+function syncInputs(){
+  KEYS.forEach(k => {
+    const {r,n} = inputs[k];
+    if (v[k] < +r.min) r.min = Math.floor(v[k]); if (v[k] > +r.max) r.max = Math.ceil(v[k]);
+    r.value = v[k]; n.value = v[k];
+  });
+}
+const presetSel = document.getElementById('preset');
+Object.keys(PRESETS).forEach(name => presetSel.appendChild(new Option(name,name)));
+presetSel.addEventListener('change', () => {
+  if (!presetSel.value) return;
+  v = {...PRESETS[presetSel.value]}; syncInputs(); update(); presetSel.value='';
+});
+['tPlanes','tLines','tEff','tImp','tShap'].forEach(id => document.getElementById(id).addEventListener('change', update));
+
+/* ---------- Geometry (2D coords: (x1,x2), x3 = V - x1 - x2) ---------- */
+let EPS = 1e-9;
+const dot = (a,p) => a[0]*p[0] + a[1]*p[1];
+
+// Half-plane {a, b}: a·p <= b. Sutherland–Hodgman clip of a convex polygon.
+function clipPoly(poly, h){
+  const out = [], n = poly.length;
+  for (let i=0;i<n;i++){
+    const P = poly[i], Q = poly[(i+1)%n];
+    const fp = dot(h.a,P) - h.b, fq = dot(h.a,Q) - h.b;
+    if (fp <= EPS) out.push(P);
+    if ((fp < -EPS && fq > EPS) || (fp > EPS && fq < -EPS)){
+      const t = fp/(fp-fq);
+      out.push([P[0]+t*(Q[0]-P[0]), P[1]+t*(Q[1]-P[1])]);
+    }
+  }
+  return dedup(out);
+}
+function dedup(pts){
+  const out = [];
+  for (const p of pts){
+    if (!out.some(q => Math.hypot(p[0]-q[0], p[1]-q[1]) < 1e3*EPS)) out.push(p);
+  }
+  return out;
+}
+// Segment of the line a·p = b inside a convex region given by half-planes.
+function clipLine(h, region){
+  const a = h.a, n2 = dot(a,a);
+  const p0 = [a[0]*h.b/n2, a[1]*h.b/n2], d = [-a[1], a[0]];
+  let t0 = -Infinity, t1 = Infinity;
+  for (const g of region){
+    const den = dot(g.a,d), num = g.b - dot(g.a,p0);
+    if (Math.abs(den) < 1e-12){ if (num < -EPS) return null; continue; }
+    const t = num/den;
+    if (den > 0) t1 = Math.min(t1,t); else t0 = Math.max(t0,t);
+  }
+  if (!(t0 < t1)) return null;
+  return [[p0[0]+t0*d[0], p0[1]+t0*d[1]], [p0[0]+t1*d[0], p0[1]+t1*d[1]]];
+}
+
+function constraints(v){
+  const V = v['123'];
+  return [
+    {id:'c1',  label:'x₁ ≥ v({1})',     a:[-1, 0], b:-v['1'],    plane:{type:'single', i:0, c:v['1']}},
+    {id:'c2',  label:'x₂ ≥ v({2})',     a:[ 0,-1], b:-v['2'],    plane:{type:'single', i:1, c:v['2']}},
+    {id:'c3',  label:'x₃ ≥ v({3})',     a:[ 1, 1], b:V-v['3'],   plane:{type:'single', i:2, c:v['3']}},
+    {id:'c12', label:'x₁+x₂ ≥ v({1,2})', a:[-1,-1], b:-v['12'],   plane:{type:'pair', i:0, j:1, c:v['12']}},
+    {id:'c13', label:'x₁+x₃ ≥ v({1,3})', a:[ 0, 1], b:V-v['13'],  plane:{type:'pair', i:0, j:2, c:v['13']}},
+    {id:'c23', label:'x₂+x₃ ≥ v({2,3})', a:[ 1, 0], b:V-v['23'],  plane:{type:'pair', i:1, j:2, c:v['23']}}
+  ];
+}
+
+function planeQuad(pl, lo, hi){
+  if (pl.type === 'single'){
+    if (pl.c < lo || pl.c > hi) return null;
+    const o = [0,1,2].filter(k => k !== pl.i);
+    return [[lo,lo],[hi,lo],[hi,hi],[lo,hi]].map(([s,t]) => { const p=[0,0,0]; p[pl.i]=pl.c; p[o[0]]=s; p[o[1]]=t; return p; });
+  }
+  const k = 3 - pl.i - pl.j;
+  const a = Math.max(lo, pl.c-hi), b = Math.min(hi, pl.c-lo);
+  if (a >= b) return null;
+  const mk = (xi,xk) => { const p=[0,0,0]; p[pl.i]=xi; p[pl.j]=pl.c-xi; p[k]=xk; return p; };
+  return [mk(a,lo), mk(a,hi), mk(b,hi), mk(b,lo)];
+}
+
+function shapley(v){
+  const V=v['123'];
+  return [
+    v['1']/3 + (v['12']-v['2'])/6 + (v['13']-v['3'])/6 + (V-v['23'])/3,
+    v['2']/3 + (v['12']-v['1'])/6 + (v['23']-v['3'])/6 + (V-v['13'])/3,
+    v['3']/3 + (v['13']-v['1'])/6 + (v['23']-v['2'])/6 + (V-v['12'])/3
+  ];
+}
+
+const fmt = x => { const r = Math.round(x*1000)/1000; return (Object.is(r,-0) ? 0 : r).toString(); };
+
+/* ---------- Plotly helpers ---------- */
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const cols = P => ({x:P.map(p=>p[0]), y:P.map(p=>p[1]), z:P.map(p=>p[2])});
+
+function meshPoly(P3, opts){
+  const i=[],j=[],k=[];
+  for (let t=1;t<P3.length-1;t++){ i.push(0); j.push(t); k.push(t+1); }
+  return Object.assign({type:'mesh3d', ...cols(P3), i, j, k, hoverinfo:'skip',
+    flatshading:true, lighting:{ambient:1, diffuse:0, specular:0, fresnel:0}, showscale:false}, opts);
+}
+function lineTrace(P3, opts){
+  return Object.assign({type:'scatter3d', mode:'lines', ...cols(P3), hoverinfo:'skip'}, opts);
+}
+
+/* ---------- Main update ---------- */
+let first = true;
+function update(){
+  const V = v['123'];
+  const to3 = p => [p[0], p[1], V - p[0] - p[1]];
+  const C = constraints(v);
+
+  // Bounding box for the scene
+  const impVerts = [[V-v['2']-v['3'], v['2'], v['3']], [v['1'], V-v['1']-v['3'], v['3']], [v['1'], v['2'], V-v['1']-v['2']]];
+  const vals = [0, ...KEYS.map(k=>v[k]), ...impVerts.flat()];
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = 0.15*(hi-lo) + 1; lo -= pad; hi += pad;
+  EPS = 1e-9 * (hi - lo);
+
+  // Box as half-planes in (x1,x2): lo ≤ x1,x2,x3 ≤ hi
+  const box = [
+    {a:[ 1, 0], b:hi}, {a:[-1, 0], b:-lo},
+    {a:[ 0, 1], b:hi}, {a:[ 0,-1], b:-lo},
+    {a:[-1,-1], b:hi-V}, {a:[ 1, 1], b:V-lo}
+  ];
+  let effPoly = [[lo,lo],[hi,lo],[hi,hi],[lo,hi]];
+  for (const h of box.slice(4)) effPoly = clipPoly(effPoly, h);
+
+  let impPoly = effPoly.slice();
+  for (const h of C.slice(0,3)) impPoly = clipPoly(impPoly, h);
+  let corePoly = impPoly.slice();
+  for (const h of C.slice(3)) corePoly = clipPoly(corePoly, h);
+
+  const show = id => document.getElementById(id).checked;
+  const ink = cssVar('--ink'), muted = cssVar('--muted'), coreCol = cssVar('--core');
+  const traces = [];
+
+  // Efficiency plane
+  if (show('tEff') && effPoly.length >= 3){
+    traces.push(meshPoly(effPoly.map(to3), {color:muted, opacity:0.18, name:'x₁+x₂+x₃ = v(N)', showlegend:true}));
+  }
+
+  // Constraint planes and lines
+  for (const c of C){
+    if (show('tPlanes')){
+      const q = planeQuad(c.plane, lo, hi);
+      if (q) traces.push(meshPoly(q, {i:[0,0], j:[1,2], k:[2,3], color:CCOL[c.id], opacity:0.13,
+        name:c.label, legendgroup:c.id, showlegend:!show('tLines')}));
+    }
+    if (show('tLines')){
+      const seg = clipLine(c, box);
+      if (seg) traces.push(lineTrace(seg.map(to3), {line:{color:CCOL[c.id], width:5},
+        name:c.label, legendgroup:c.id, showlegend:true}));
+    }
+  }
+
+  // Imputation set
+  if (show('tImp') && impPoly.length >= 3){
+    const P = impPoly.map(to3);
+    traces.push(meshPoly(P, {color:muted, opacity:0.22, name:'Imputation set', legendgroup:'imp', showlegend:true}));
+    traces.push(lineTrace([...P, P[0]], {line:{color:muted, width:3, dash:'dash'}, legendgroup:'imp', showlegend:false, name:'Imputation set'}));
+  }
+
+  // Core
+  const core3 = corePoly.map(to3);
+  if (core3.length >= 3){
+    traces.push(meshPoly(core3, {color:coreCol, opacity:0.85, name:'Core', legendgroup:'core', showlegend:true}));
+    traces.push(lineTrace([...core3, core3[0]], {line:{color:coreCol, width:7}, legendgroup:'core', showlegend:false, name:'Core'}));
+  } else if (core3.length === 2){
+    traces.push(lineTrace(core3, {line:{color:coreCol, width:10}, name:'Core (segment)', legendgroup:'core', showlegend:true}));
+  }
+  if (core3.length){
+    traces.push({type:'scatter3d', mode:'markers', ...cols(core3), marker:{size:5, color:coreCol, line:{color:ink, width:1}},
+      name:'Core vertices', legendgroup:'core', showlegend:core3.length===1,
+      hovertemplate:'(%{x:.3f}, %{y:.3f}, %{z:.3f})<extra>Core vertex</extra>'});
+  }
+
+  // Shapley value
+  const phi = shapley(v);
+  const phiInCore = C.every(c => dot(c.a, phi) <= c.b + 1e3*EPS);
+  if (show('tShap')){
+    traces.push({type:'scatter3d', mode:'markers+text', x:[phi[0]], y:[phi[1]], z:[phi[2]],
+      marker:{size:6, color:ink, symbol:'diamond'}, text:['φ'], textposition:'top center', textfont:{color:ink, size:14},
+      name:'Shapley value φ', hovertemplate:'φ = (%{x:.3f}, %{y:.3f}, %{z:.3f})<extra></extra>'});
+  }
+
+  const axis = t => ({title:{text:t}, range:[lo,hi], color:ink, gridcolor:cssVar('--line'),
+    zerolinecolor:muted, backgroundcolor:'rgba(0,0,0,0)', showbackground:false});
+  const layout = {
+    uirevision:'keep',
+    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+    font:{color:ink, family:'system-ui, sans-serif'},
+    margin:{l:0, r:0, t:0, b:0},
+    legend:{x:0.01, y:0.99, bgcolor:'rgba(0,0,0,0)'},
+    scene:{uirevision:'keep', aspectmode:'cube', xaxis:axis('x₁'), yaxis:axis('x₂'), zaxis:axis('x₃'),
+      camera: first ? {eye:{x:1.7, y:-1.5, z:1.0}} : undefined}
+  };
+  if (!first) delete layout.scene.camera;
+  Plotly.react('plot', traces, layout, {responsive:true, displaylogo:false});
+  first = false;
+
+  renderStatus(corePoly, core3, phi, phiInCore);
+}
+
+function renderStatus(corePoly, core3, phi, phiInCore){
+  const V = v['123'];
+  const st = document.getElementById('status');
+  let kind = core3.length === 0 ? 'empty' : core3.length === 1 ? 'a single point' : core3.length === 2 ? 'a line segment' : `a polygon with ${core3.length} vertices`;
+  st.className = 'status ' + (core3.length ? 'ok' : 'bad');
+  st.textContent = core3.length ? `Core is non-empty: ${kind}.` : 'Core is empty.';
+
+  // Bondareva–Shapley conditions for n = 3
+  const conds = [
+    ['v(N) ≥ v(1)+v(2)+v(3)', V, v['1']+v['2']+v['3']],
+    ['v(N) ≥ v(12)+v(3)',     V, v['12']+v['3']],
+    ['v(N) ≥ v(13)+v(2)',     V, v['13']+v['2']],
+    ['v(N) ≥ v(23)+v(1)',     V, v['23']+v['1']],
+    ['2v(N) ≥ v(12)+v(13)+v(23)', 2*V, v['12']+v['13']+v['23']]
+  ];
+  document.getElementById('conds').innerHTML =
+    '<li style="color:var(--muted)"><span>Bondareva–Shapley conditions</span></li>' +
+    conds.map(([t,l,r]) => {
+      const ok = l >= r - 1e-9;
+      return `<li><span>${t}</span><span class="${ok?'y':'n'}">${fmt(l)} ${ok?'≥':'<'} ${fmt(r)}</span></li>`;
+    }).join('');
+
+  let html = '';
+  if (core3.length){
+    html += '<table><tr><th style="text-align:left">Vertex</th><th>x₁</th><th>x₂</th><th>x₃</th></tr>' +
+      core3.map((p,i) => `<tr><td style="text-align:left">${i+1}</td><td>${fmt(p[0])}</td><td>${fmt(p[1])}</td><td>${fmt(p[2])}</td></tr>`).join('') +
+      '</table>';
+  }
+  html += `<p style="margin:10px 0 0;font-size:13px">Shapley value φ = (${phi.map(fmt).join(', ')}) — <span class="${phiInCore?'y':'n'}">${phiInCore?'in the core':'not in the core'}</span></p>`;
+  document.getElementById('vertices').innerHTML = html;
+}
+
+document.getElementById('viewNormal').addEventListener('click', () =>
+  Plotly.relayout('plot', {'scene.camera':{eye:{x:1.3, y:1.3, z:1.3}, up:{x:0, y:0, z:1}, center:{x:0,y:0,z:0}}}));
+document.getElementById('viewReset').addEventListener('click', () =>
+  Plotly.relayout('plot', {'scene.camera':{eye:{x:1.7, y:-1.5, z:1.0}, up:{x:0, y:0, z:1}, center:{x:0,y:0,z:0}}}));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
+
+syncInputs();
+update();
+</script>
+</body>
+</html>
