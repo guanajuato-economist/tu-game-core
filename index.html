@@ -8,12 +8,12 @@
 <style>
   :root{
     --bg:#f6f6f3; --panel:#ffffff; --ink:#1c1c1f; --muted:#6b6b72; --line:#e2e2de;
-    --accent:#2f6fdb; --ok:#1f8a4c; --bad:#c0392b; --core:#ff2d7a;
+    --accent:#2f6fdb; --ok:#1f8a4c; --bad:#c0392b; --warn:#b26a00; --core:#ff2d7a; --nuc:#0b7a75;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#121214; --panel:#1b1b1f; --ink:#ececef; --muted:#9a9aa3; --line:#2d2d33;
-      --accent:#6ea0ff; --ok:#4cc38a; --bad:#ff6b5e; --core:#ff4f93;
+      --accent:#6ea0ff; --ok:#4cc38a; --bad:#ff6b5e; --warn:#f0b357; --core:#ff4f93; --nuc:#3fd1c8;
     }
   }
   *{box-sizing:border-box}
@@ -26,7 +26,7 @@
   h1{font-size:18px;margin:0 0 4px}
   h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px;font-weight:600}
   p.sub{margin:0;color:var(--muted);font-size:13px}
-  .row{display:grid;grid-template-columns:72px 1fr 70px;gap:10px;align-items:center;margin:6px 0}
+  .row{display:grid;grid-template-columns:76px 1fr 70px;gap:10px;align-items:center;margin:6px 0}
   .row label{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
   .row.grand label{font-weight:700}
   input[type=range]{width:100%;accent-color:var(--accent)}
@@ -39,12 +39,14 @@
   .status{padding:10px 12px;border-radius:8px;font-weight:600;margin-bottom:8px}
   .status.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
   .status.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+  .note{font-size:12.5px;color:var(--warn);margin:6px 0 0}
   ul.conds{list-style:none;padding:0;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
   ul.conds li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)}
   .y{color:var(--ok)} .n{color:var(--bad)}
   table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
   td,th{padding:3px 4px;text-align:right;border-bottom:1px solid var(--line)}
   th{color:var(--muted);font-weight:500}
+  .sol{font-size:13px;margin:8px 0 0}
   .defs{font-size:13px;color:var(--muted)}
   .defs code{color:var(--ink)}
   @media (max-width:860px){
@@ -58,7 +60,7 @@
 <div class="app">
   <aside>
     <h1>Core of a 3-player TU game</h1>
-    <p class="sub">Set the worth of every coalition. The core is shaded on the efficiency plane x₁+x₂+x₃ = v(N).</p>
+    <p class="sub">Players A, B and C. Set the worth of every coalition; the core is shaded on the efficiency plane x<sub>A</sub>+x<sub>B</sub>+x<sub>C</sub> = v(N). Only non-negative payoffs are drawn.</p>
 
     <h2>Presets</h2>
     <div class="btns">
@@ -76,7 +78,8 @@
       <label><input type="checkbox" id="tLines" checked> Constraint lines on efficiency plane</label>
       <label><input type="checkbox" id="tEff" checked> Efficiency plane</label>
       <label><input type="checkbox" id="tImp" checked> Imputation set</label>
-      <label><input type="checkbox" id="tShap" checked> Shapley value</label>
+      <label><input type="checkbox" id="tShap" checked> Shapley value φ</label>
+      <label><input type="checkbox" id="tNuc" checked> Nucleolus ν</label>
     </div>
     <div class="btns" style="margin-top:10px">
       <button id="viewNormal">Look straight at the plane</button>
@@ -90,20 +93,23 @@
 
     <h2>Definitions</h2>
     <div class="defs">
-      <p>The core is the set of allocations <code>x = (x₁,x₂,x₃)</code> with</p>
-      <p><code>x₁+x₂+x₃ = v(N)</code> (efficiency)<br>
-      <code>xᵢ ≥ v({i})</code> for each i<br>
-      <code>xᵢ+xⱼ ≥ v({i,j})</code> for each pair</p>
+      <p>The core is the set of allocations <code>x = (x<sub>A</sub>, x<sub>B</sub>, x<sub>C</sub>)</code> with</p>
+      <p><code>x<sub>A</sub>+x<sub>B</sub>+x<sub>C</sub> = v(N)</code> (efficiency)<br>
+      <code>x<sub>i</sub> ≥ v({i})</code> for each player i<br>
+      <code>x<sub>i</sub>+x<sub>j</sub> ≥ v({i,j})</code> for each pair</p>
       <p>Each inequality is a half-space bounded by a plane; on the efficiency plane each boundary becomes a line. The core is the intersection of the six half-planes with the efficiency plane.</p>
+      <p>The <b>nucleolus</b> is the imputation that lexicographically minimises the coalitions' excesses e(S,x) = v(S) − x(S), largest first. It always lies in the core when the core is non-empty.</p>
     </div>
   </aside>
   <main><div id="plot"></div></main>
 </div>
 
 <script>
-/* ---------- Game data ---------- */
+/* ---------- Game data (internal keys use 1,2,3 = A,B,C) ---------- */
 const KEYS = ['1','2','3','12','13','23','123'];
-const LABEL = {'1':'v({1})','2':'v({2})','3':'v({3})','12':'v({1,2})','13':'v({1,3})','23':'v({2,3})','123':'v(N)'};
+const NAME = {'1':'A','2':'B','3':'C','12':'A,B','13':'A,C','23':'B,C','123':'N'};
+const LABEL = k => k==='123' ? 'v(N)' : `v({${NAME[k]}})`;
+const XS = ['x<sub>A</sub>','x<sub>B</sub>','x<sub>C</sub>'];
 let v = {'1':0,'2':0,'3':0,'12':6,'13':5,'23':4,'123':10};
 
 const PRESETS = {
@@ -124,8 +130,8 @@ KEYS.forEach((k,idx) => {
   if (idx === 3 || idx === 6) controls.appendChild(Object.assign(document.createElement('div'),{className:'sep'}));
   const row = document.createElement('div');
   row.className = 'row' + (k==='123' ? ' grand' : '');
-  row.innerHTML = `<label for="r${k}">${LABEL[k]}</label>
-    <input type="range" id="r${k}" min="-10" max="30" step="0.1">
+  row.innerHTML = `<label for="r${k}">${LABEL(k)}</label>
+    <input type="range" id="r${k}" min="0" max="30" step="0.1">
     <input type="number" id="n${k}" step="0.1">`;
   controls.appendChild(row);
   const r = row.querySelector('input[type=range]'), n = row.querySelector('input[type=number]');
@@ -150,9 +156,9 @@ presetSel.addEventListener('change', () => {
   if (!presetSel.value) return;
   v = {...PRESETS[presetSel.value]}; syncInputs(); update(); presetSel.value='';
 });
-['tPlanes','tLines','tEff','tImp','tShap'].forEach(id => document.getElementById(id).addEventListener('change', update));
+['tPlanes','tLines','tEff','tImp','tShap','tNuc'].forEach(id => document.getElementById(id).addEventListener('change', update));
 
-/* ---------- Geometry (2D coords: (x1,x2), x3 = V - x1 - x2) ---------- */
+/* ---------- Geometry (2D coords: (xA,xB), xC = V - xA - xB) ---------- */
 let EPS = 1e-9;
 const dot = (a,p) => a[0]*p[0] + a[1]*p[1];
 
@@ -170,6 +176,7 @@ function clipPoly(poly, h){
   }
   return dedup(out);
 }
+const clipAll = (poly, hs) => hs.reduce((p,h) => clipPoly(p,h), poly);
 function dedup(pts){
   const out = [];
   for (const p of pts){
@@ -191,16 +198,24 @@ function clipLine(h, region){
   if (!(t0 < t1)) return null;
   return [[p0[0]+t0*d[0], p0[1]+t0*d[1]], [p0[0]+t1*d[0], p0[1]+t1*d[1]]];
 }
+// Half-planes for lo ≤ xA, xB, xC ≤ hi on the efficiency plane
+function boxHalfPlanes(lo, hi, V){
+  return [
+    {a:[ 1, 0], b:hi}, {a:[-1, 0], b:-lo},
+    {a:[ 0, 1], b:hi}, {a:[ 0,-1], b:-lo},
+    {a:[-1,-1], b:hi-V}, {a:[ 1, 1], b:V-lo}
+  ];
+}
 
 function constraints(v){
   const V = v['123'];
   return [
-    {id:'c1',  label:'x₁ ≥ v({1})',     a:[-1, 0], b:-v['1'],    plane:{type:'single', i:0, c:v['1']}},
-    {id:'c2',  label:'x₂ ≥ v({2})',     a:[ 0,-1], b:-v['2'],    plane:{type:'single', i:1, c:v['2']}},
-    {id:'c3',  label:'x₃ ≥ v({3})',     a:[ 1, 1], b:V-v['3'],   plane:{type:'single', i:2, c:v['3']}},
-    {id:'c12', label:'x₁+x₂ ≥ v({1,2})', a:[-1,-1], b:-v['12'],   plane:{type:'pair', i:0, j:1, c:v['12']}},
-    {id:'c13', label:'x₁+x₃ ≥ v({1,3})', a:[ 0, 1], b:V-v['13'],  plane:{type:'pair', i:0, j:2, c:v['13']}},
-    {id:'c23', label:'x₂+x₃ ≥ v({2,3})', a:[ 1, 0], b:V-v['23'],  plane:{type:'pair', i:1, j:2, c:v['23']}}
+    {id:'c1',  label:'x<sub>A</sub> ≥ v({A})',                   a:[-1, 0], b:-v['1'],   plane:{type:'single', i:0, c:v['1']}},
+    {id:'c2',  label:'x<sub>B</sub> ≥ v({B})',                   a:[ 0,-1], b:-v['2'],   plane:{type:'single', i:1, c:v['2']}},
+    {id:'c3',  label:'x<sub>C</sub> ≥ v({C})',                   a:[ 1, 1], b:V-v['3'],  plane:{type:'single', i:2, c:v['3']}},
+    {id:'c12', label:'x<sub>A</sub>+x<sub>B</sub> ≥ v({A,B})',   a:[-1,-1], b:-v['12'],  plane:{type:'pair', i:0, j:1, c:v['12']}},
+    {id:'c13', label:'x<sub>A</sub>+x<sub>C</sub> ≥ v({A,C})',   a:[ 0, 1], b:V-v['13'], plane:{type:'pair', i:0, j:2, c:v['13']}},
+    {id:'c23', label:'x<sub>B</sub>+x<sub>C</sub> ≥ v({B,C})',   a:[ 1, 0], b:V-v['23'], plane:{type:'pair', i:1, j:2, c:v['23']}}
   ];
 }
 
@@ -217,6 +232,7 @@ function planeQuad(pl, lo, hi){
   return [mk(a,lo), mk(a,hi), mk(b,hi), mk(b,lo)];
 }
 
+/* ---------- Solution concepts ---------- */
 function shapley(v){
   const V=v['123'];
   return [
@@ -224,6 +240,64 @@ function shapley(v){
     v['2']/3 + (v['12']-v['1'])/6 + (v['23']-v['3'])/6 + (V-v['13'])/3,
     v['3']/3 + (v['13']-v['1'])/6 + (v['23']-v['2'])/6 + (V-v['12'])/3
   ];
+}
+
+// Tiny LP in 3 variables z = (xA, xB, t): minimise obj·z subject to rows a·z ≤ b,
+// solved by enumerating vertices (fine for the handful of constraints here).
+function lp3(obj, rows, tol){
+  let best = null;
+  const n = rows.length;
+  for (let i=0;i<n;i++) for (let j=i+1;j<n;j++) for (let k=j+1;k<n;k++){
+    const A = [rows[i].a, rows[j].a, rows[k].a], b = [rows[i].b, rows[j].b, rows[k].b];
+    const det = A[0][0]*(A[1][1]*A[2][2]-A[1][2]*A[2][1]) - A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0]) + A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
+    if (Math.abs(det) < 1e-12) continue;
+    const z = [0,1,2].map(c => {
+      const M = A.map((r,ri) => r.map((x,ci) => ci===c ? b[ri] : x));
+      return (M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]))/det;
+    });
+    if (!rows.every(r => r.a[0]*z[0]+r.a[1]*z[1]+r.a[2]*z[2] <= r.b + tol)) continue;
+    const val = obj[0]*z[0]+obj[1]*z[1]+obj[2]*z[2];
+    if (!best || val < best.val) best = {z, val};
+  }
+  return best;
+}
+
+// Nucleolus over the imputation set (sequential LPs, Maschler–Peleg–Shapley).
+function nucleolus(v){
+  const V = v['123'];
+  if (V < v['1']+v['2']+v['3'] - 1e-12) return null;      // imputation set empty
+  const scale = 1 + Math.max(...KEYS.map(k => Math.abs(v[k])));
+  const tol = 1e-8*scale;
+  // Coalition membership (A,B,C) → x(S) = c·(xA,xB) + k, since xC = V − xA − xB
+  const COAL = [['1',[1,0,0]],['2',[0,1,0]],['3',[0,0,1]],['12',[1,1,0]],['13',[1,0,1]],['23',[0,1,1]]]
+    .map(([key,m]) => ({key, c:[m[0]-m[2], m[1]-m[2]], k:m[2]*V}));
+  const base = [{a:[-1,0,0], b:-v['1']}, {a:[0,-1,0], b:-v['2']}, {a:[1,1,0], b:V-v['3']}];
+  // e(S,x) = v(S) − c·x − k ≤ t   ⇔   −c·x − t ≤ k − v(S)
+  const exRow = S => ({a:[-S.c[0], -S.c[1], -1], b:S.k - v[S.key]});
+  let free = COAL.slice();
+  const eqs = [];
+  for (let it=0; it<8 && free.length; it++){
+    const r = lp3([0,0,1], [...base, ...eqs, ...free.map(exRow)], tol);
+    if (!r) return null;
+    const t = r.val;
+    // Region where all free excesses are ≤ t (t fixed): which coalitions can't go below t?
+    const rowsT = [...base, ...eqs,
+      ...free.map(S => ({a:[-S.c[0], -S.c[1], 0], b:S.k - v[S.key] + t})),
+      {a:[0,0,1], b:0}, {a:[0,0,-1], b:0}];
+    let fixed = free.filter(S => {
+      const r2 = lp3([-S.c[0], -S.c[1], 0], rowsT, tol);
+      return r2 && (r2.val + v[S.key] - S.k) >= t - 1e3*tol;
+    });
+    if (!fixed.length) fixed = free.slice();
+    for (const S of fixed){
+      const rhs = S.k - v[S.key] + t;                        // −c·x = k − v(S) + t
+      eqs.push({a:[-S.c[0], -S.c[1], 0], b:rhs}, {a:[S.c[0], S.c[1], 0], b:-rhs});
+    }
+    free = free.filter(S => !fixed.includes(S));
+  }
+  const r = lp3([1,0,0], [...base, ...eqs, {a:[0,0,1], b:0}, {a:[0,0,-1], b:0}], 1e3*tol);
+  if (!r) return null;
+  return [r.z[0], r.z[1], V - r.z[0] - r.z[1]];
 }
 
 const fmt = x => { const r = Math.round(x*1000)/1000; return (Object.is(r,-0) ? 0 : r).toString(); };
@@ -241,6 +315,10 @@ function meshPoly(P3, opts){
 function lineTrace(P3, opts){
   return Object.assign({type:'scatter3d', mode:'lines', ...cols(P3), hoverinfo:'skip'}, opts);
 }
+function pointTrace(p, opts){
+  return Object.assign({type:'scatter3d', mode:'markers+text', x:[p[0]], y:[p[1]], z:[p[2]],
+    textposition:'top center'}, opts);
+}
 
 /* ---------- Main update ---------- */
 let first = true;
@@ -249,40 +327,53 @@ function update(){
   const to3 = p => [p[0], p[1], V - p[0] - p[1]];
   const C = constraints(v);
 
-  // Bounding box for the scene
+  // Plotted region: the non-negative orthant up to hi
   const impVerts = [[V-v['2']-v['3'], v['2'], v['3']], [v['1'], V-v['1']-v['3'], v['3']], [v['1'], v['2'], V-v['1']-v['2']]];
   const vals = [0, ...KEYS.map(k=>v[k]), ...impVerts.flat()];
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = 0.15*(hi-lo) + 1; lo -= pad; hi += pad;
-  EPS = 1e-9 * (hi - lo);
+  const vmax = Math.max(...vals), vmin = Math.min(...vals);
+  const hi = vmax * 1.15 + 0.5;
+  EPS = 1e-9 * (hi - Math.min(0, vmin) + 1);
 
-  // Box as half-planes in (x1,x2): lo ≤ x1,x2,x3 ≤ hi
-  const box = [
-    {a:[ 1, 0], b:hi}, {a:[-1, 0], b:-lo},
-    {a:[ 0, 1], b:hi}, {a:[ 0,-1], b:-lo},
-    {a:[-1,-1], b:hi-V}, {a:[ 1, 1], b:V-lo}
-  ];
-  let effPoly = [[lo,lo],[hi,lo],[hi,hi],[lo,hi]];
-  for (const h of box.slice(4)) effPoly = clipPoly(effPoly, h);
+  // Full (unclipped) core and imputation set — used for the numbers in the panel
+  const padB = 0.2*(vmax - vmin) + 1;
+  const bigBox = boxHalfPlanes(vmin - padB, vmax + padB, V);
+  const bigSquare = [[vmin-padB, vmin-padB],[vmax+padB, vmin-padB],[vmax+padB, vmax+padB],[vmin-padB, vmax+padB]];
+  const fullImp = clipAll(clipAll(bigSquare, bigBox), C.slice(0,3));
+  const fullCore = clipAll(fullImp, C.slice(3));
 
-  let impPoly = effPoly.slice();
-  for (const h of C.slice(0,3)) impPoly = clipPoly(impPoly, h);
-  let corePoly = impPoly.slice();
-  for (const h of C.slice(3)) corePoly = clipPoly(corePoly, h);
+  // Drawn versions, restricted to 0 ≤ x ≤ hi
+  const box = boxHalfPlanes(0, hi, V);
+  const effPoly = clipAll([[0,0],[hi,0],[hi,hi],[0,hi]], box.slice(4));
+  const impPoly = clipAll(fullImp, box);
+  const corePoly = clipAll(fullCore, box);
 
   const show = id => document.getElementById(id).checked;
-  const ink = cssVar('--ink'), muted = cssVar('--muted'), coreCol = cssVar('--core');
+  const ink = cssVar('--ink'), muted = cssVar('--muted'), coreCol = cssVar('--core'), nucCol = cssVar('--nuc');
   const traces = [];
+
+  // Highlighted axes: thick lines from the origin, arrowheads and player labels
+  const axLen = hi;
+  for (let a=0; a<3; a++){
+    const tip = [0,0,0]; tip[a] = axLen;
+    traces.push(lineTrace([[0,0,0], tip], {line:{color:ink, width:7}, showlegend:false, name:'axis'}));
+  }
+  traces.push({type:'cone', x:[axLen,0,0], y:[0,axLen,0], z:[0,0,axLen], u:[1,0,0], v:[0,1,0], w:[0,0,1],
+    anchor:'tip', sizemode:'absolute', sizeref:0.06*hi, colorscale:[[0,ink],[1,ink]], showscale:false,
+    hoverinfo:'skip', showlegend:false, lighting:{ambient:1, diffuse:0, specular:0}});
+  traces.push({type:'scatter3d', mode:'text', x:[axLen*1.07,0,0], y:[0,axLen*1.07,0], z:[0,0,axLen*1.07],
+    text:['<b>A</b>','<b>B</b>','<b>C</b>'], textfont:{size:20, color:ink}, hoverinfo:'skip', showlegend:false});
+  traces.push({type:'scatter3d', mode:'markers', x:[0], y:[0], z:[0], marker:{size:4, color:ink},
+    hovertemplate:'origin<extra></extra>', showlegend:false});
 
   // Efficiency plane
   if (show('tEff') && effPoly.length >= 3){
-    traces.push(meshPoly(effPoly.map(to3), {color:muted, opacity:0.18, name:'x₁+x₂+x₃ = v(N)', showlegend:true}));
+    traces.push(meshPoly(effPoly.map(to3), {color:muted, opacity:0.18, name:'x<sub>A</sub>+x<sub>B</sub>+x<sub>C</sub> = v(N)', showlegend:true}));
   }
 
   // Constraint planes and lines
   for (const c of C){
     if (show('tPlanes')){
-      const q = planeQuad(c.plane, lo, hi);
+      const q = planeQuad(c.plane, 0, hi);
       if (q) traces.push(meshPoly(q, {i:[0,0], j:[1,2], k:[2,3], color:CCOL[c.id], opacity:0.13,
         name:c.label, legendgroup:c.id, showlegend:!show('tLines')}));
     }
@@ -314,47 +405,55 @@ function update(){
       hovertemplate:'(%{x:.3f}, %{y:.3f}, %{z:.3f})<extra>Core vertex</extra>'});
   }
 
-  // Shapley value
+  // Shapley value and nucleolus
+  const inView = p => p && p.every(x => x >= -1e3*EPS);
+  const inCore = p => p && C.every(c => dot(c.a, p) <= c.b + 1e3*EPS);
   const phi = shapley(v);
-  const phiInCore = C.every(c => dot(c.a, phi) <= c.b + 1e3*EPS);
-  if (show('tShap')){
-    traces.push({type:'scatter3d', mode:'markers+text', x:[phi[0]], y:[phi[1]], z:[phi[2]],
-      marker:{size:6, color:ink, symbol:'diamond'}, text:['φ'], textposition:'top center', textfont:{color:ink, size:14},
-      name:'Shapley value φ', hovertemplate:'φ = (%{x:.3f}, %{y:.3f}, %{z:.3f})<extra></extra>'});
+  const nu = nucleolus(v);
+  if (show('tShap') && inView(phi)){
+    traces.push(pointTrace(phi, {marker:{size:6, color:ink, symbol:'diamond'}, text:['φ'], textfont:{color:ink, size:15},
+      name:'Shapley value φ', hovertemplate:'φ = (%{x:.3f}, %{y:.3f}, %{z:.3f})<extra></extra>'}));
+  }
+  if (show('tNuc') && inView(nu)){
+    traces.push(pointTrace(nu, {marker:{size:6, color:nucCol, symbol:'square', line:{color:ink, width:1}},
+      text:['ν'], textposition:'bottom center', textfont:{color:nucCol, size:15},
+      name:'Nucleolus ν', hovertemplate:'ν = (%{x:.3f}, %{y:.3f}, %{z:.3f})<extra></extra>'}));
   }
 
-  const axis = t => ({title:{text:t}, range:[lo,hi], color:ink, gridcolor:cssVar('--line'),
-    zerolinecolor:muted, backgroundcolor:'rgba(0,0,0,0)', showbackground:false});
+  const axis = t => ({title:{text:t, font:{size:15}}, range:[0, hi*1.12], color:ink, gridcolor:cssVar('--line'),
+    showline:false, zeroline:false, backgroundcolor:'rgba(0,0,0,0)', showbackground:false});
   const layout = {
     uirevision:'keep',
     paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
     font:{color:ink, family:'system-ui, sans-serif'},
     margin:{l:0, r:0, t:0, b:0},
     legend:{x:0.01, y:0.99, bgcolor:'rgba(0,0,0,0)'},
-    scene:{uirevision:'keep', aspectmode:'cube', xaxis:axis('x₁'), yaxis:axis('x₂'), zaxis:axis('x₃'),
-      camera: first ? {eye:{x:1.7, y:-1.5, z:1.0}} : undefined}
+    scene:{uirevision:'keep', aspectmode:'cube', xaxis:axis(XS[0]), yaxis:axis(XS[1]), zaxis:axis(XS[2])}
   };
-  if (!first) delete layout.scene.camera;
+  if (first) layout.scene.camera = {eye:{x:1.7, y:1.1, z:0.9}};
   Plotly.react('plot', traces, layout, {responsive:true, displaylogo:false});
   first = false;
 
-  renderStatus(corePoly, core3, phi, phiInCore);
+  renderStatus(fullCore.map(to3), corePoly.length, phi, nu, inCore, inView);
 }
 
-function renderStatus(corePoly, core3, phi, phiInCore){
+function renderStatus(core3, drawnCount, phi, nu, inCore, inView){
   const V = v['123'];
   const st = document.getElementById('status');
-  let kind = core3.length === 0 ? 'empty' : core3.length === 1 ? 'a single point' : core3.length === 2 ? 'a line segment' : `a polygon with ${core3.length} vertices`;
+  const kind = core3.length === 0 ? 'empty' : core3.length === 1 ? 'a single point' : core3.length === 2 ? 'a line segment' : `a polygon with ${core3.length} vertices`;
   st.className = 'status ' + (core3.length ? 'ok' : 'bad');
-  st.textContent = core3.length ? `Core is non-empty: ${kind}.` : 'Core is empty.';
+  st.innerHTML = core3.length ? `Core is non-empty: ${kind}.` : 'Core is empty.';
+  if (core3.some(p => p.some(x => x < -1e3*EPS))){
+    st.innerHTML += `<div class="note">${drawnCount ? 'Part of the core' : 'The core'} has negative payoffs and lies outside the plotted region.</div>`;
+  }
 
   // Bondareva–Shapley conditions for n = 3
   const conds = [
-    ['v(N) ≥ v(1)+v(2)+v(3)', V, v['1']+v['2']+v['3']],
-    ['v(N) ≥ v(12)+v(3)',     V, v['12']+v['3']],
-    ['v(N) ≥ v(13)+v(2)',     V, v['13']+v['2']],
-    ['v(N) ≥ v(23)+v(1)',     V, v['23']+v['1']],
-    ['2v(N) ≥ v(12)+v(13)+v(23)', 2*V, v['12']+v['13']+v['23']]
+    ['v(N) ≥ v(A)+v(B)+v(C)', V, v['1']+v['2']+v['3']],
+    ['v(N) ≥ v(AB)+v(C)',     V, v['12']+v['3']],
+    ['v(N) ≥ v(AC)+v(B)',     V, v['13']+v['2']],
+    ['v(N) ≥ v(BC)+v(A)',     V, v['23']+v['1']],
+    ['2v(N) ≥ v(AB)+v(AC)+v(BC)', 2*V, v['12']+v['13']+v['23']]
   ];
   document.getElementById('conds').innerHTML =
     '<li style="color:var(--muted)"><span>Bondareva–Shapley conditions</span></li>' +
@@ -365,18 +464,24 @@ function renderStatus(corePoly, core3, phi, phiInCore){
 
   let html = '';
   if (core3.length){
-    html += '<table><tr><th style="text-align:left">Vertex</th><th>x₁</th><th>x₂</th><th>x₃</th></tr>' +
+    html += `<table><tr><th style="text-align:left">Vertex</th><th>${XS[0]}</th><th>${XS[1]}</th><th>${XS[2]}</th></tr>` +
       core3.map((p,i) => `<tr><td style="text-align:left">${i+1}</td><td>${fmt(p[0])}</td><td>${fmt(p[1])}</td><td>${fmt(p[2])}</td></tr>`).join('') +
       '</table>';
   }
-  html += `<p style="margin:10px 0 0;font-size:13px">Shapley value φ = (${phi.map(fmt).join(', ')}) — <span class="${phiInCore?'y':'n'}">${phiInCore?'in the core':'not in the core'}</span></p>`;
+  const sol = (sym, name, p) => {
+    if (!p) return `<p class="sol">${name} ${sym}: not defined (the imputation set is empty).</p>`;
+    const where = inCore(p) ? '<span class="y">in the core</span>' : '<span class="n">not in the core</span>';
+    const hidden = inView(p) ? '' : ' <span class="n">(outside the plotted region)</span>';
+    return `<p class="sol">${name} ${sym} = (${p.map(fmt).join(', ')}) — ${where}${hidden}</p>`;
+  };
+  html += sol('φ', 'Shapley value', phi) + sol('ν', 'Nucleolus', nu);
   document.getElementById('vertices').innerHTML = html;
 }
 
 document.getElementById('viewNormal').addEventListener('click', () =>
   Plotly.relayout('plot', {'scene.camera':{eye:{x:1.3, y:1.3, z:1.3}, up:{x:0, y:0, z:1}, center:{x:0,y:0,z:0}}}));
 document.getElementById('viewReset').addEventListener('click', () =>
-  Plotly.relayout('plot', {'scene.camera':{eye:{x:1.7, y:-1.5, z:1.0}, up:{x:0, y:0, z:1}, center:{x:0,y:0,z:0}}}));
+  Plotly.relayout('plot', {'scene.camera':{eye:{x:1.7, y:1.1, z:0.9}, up:{x:0, y:0, z:1}, center:{x:0,y:0,z:0}}}));
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
 
 syncInputs();

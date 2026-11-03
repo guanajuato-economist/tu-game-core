@@ -4,37 +4,44 @@ An interactive web app for exploring the **core** of a three-player cooperative 
 
 Move the sliders to set the worth of every coalition, and the 3D plot updates live:
 
-- the **efficiency plane** x₁ + x₂ + x₃ = v(N),
+- highlighted **axes** for players A, B and C (the plot shows non-negative payoffs only),
+- the **efficiency plane** x_A + x_B + x_C = v(N),
 - the six **constraint planes** xᵢ = v({i}) and xᵢ + xⱼ = v({i,j}), each in its own color,
 - their **intersection lines** with the efficiency plane,
 - the **imputation set** (dashed outline),
 - the **core**, shaded on the efficiency plane,
-- the **Shapley value** φ, with a check of whether it lies in the core.
+- the **Shapley value** φ and the **nucleolus** ν, each with a check of whether it lies in the core.
 
 The side panel reports whether the core is empty, a point, a segment or a polygon, lists its vertices, and checks the Bondareva–Shapley conditions for three players.
 
 ## The model
 
-A TU game with players N = {1, 2, 3} is given by a characteristic function v that assigns a worth to each coalition:
-v({1}), v({2}), v({3}), v({1,2}), v({1,3}), v({2,3}), v(N).
+A TU game with players N = {A, B, C} is given by a characteristic function v that assigns a worth to each coalition:
+v({A}), v({B}), v({C}), v({A,B}), v({A,C}), v({B,C}), v(N).
 
-The core is the set of allocations x = (x₁, x₂, x₃) satisfying
+The core is the set of allocations x = (x_A, x_B, x_C) satisfying
 
 | Condition | Inequality |
 |---|---|
-| Efficiency | x₁ + x₂ + x₃ = v(N) |
-| Individual rationality | xᵢ ≥ v({i}), i = 1, 2, 3 |
+| Efficiency | x_A + x_B + x_C = v(N) |
+| Individual rationality | xᵢ ≥ v({i}), i = A, B, C |
 | Coalitional rationality | xᵢ + xⱼ ≥ v({i,j}) for each pair |
 
 For n = 3, the core is non-empty if and only if
 
-- v(N) ≥ v({1}) + v({2}) + v({3})
+- v(N) ≥ v({A}) + v({B}) + v({C})
 - v(N) ≥ v({i,j}) + v({k}) for every pair {i,j}
-- 2·v(N) ≥ v({1,2}) + v({1,3}) + v({2,3})
+- 2·v(N) ≥ v({A,B}) + v({A,C}) + v({B,C})
 
 ### How the core is computed
 
-On the efficiency plane, x₃ = v(N) − x₁ − x₂, so every inequality becomes a half-plane in (x₁, x₂). The app clips a polygon by the six half-planes (Sutherland–Hodgman), then lifts the result back to 3D. Degenerate cores (a point or a segment) are drawn as a marker or a thick line.
+On the efficiency plane, x_C = v(N) − x_A − x_B, so every inequality becomes a half-plane in (x_A, x_B). The app clips a polygon by the six half-planes (Sutherland–Hodgman), then lifts the result back to 3D. Degenerate cores (a point or a segment) are drawn as a marker or a thick line.
+
+Only the non-negative orthant is drawn. The vertex table always reports the full core; if part of it has negative payoffs, the panel says so.
+
+### Nucleolus
+
+The nucleolus is the imputation that lexicographically minimises the vector of excesses e(S, x) = v(S) − x(S), sorted from largest to smallest. It is computed with the sequential linear programs of Maschler, Peleg and Shapley (1979): minimise the largest excess, fix the coalitions that cannot do better, and repeat. Each LP has only three variables, so it is solved exactly by enumerating vertices. The nucleolus is defined whenever the imputation set is non-empty, and it lies in the core whenever the core is non-empty.
 
 ## Presets
 
