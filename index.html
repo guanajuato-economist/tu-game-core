@@ -326,6 +326,9 @@ function update(){
   const V = v['123'];
   const to3 = p => [p[0], p[1], V - p[0] - p[1]];
   const C = constraints(v);
+  // Coplanar layers are nudged apart along (1,1,1) so they don't flicker through each other
+  let LAY = 0;
+  const lift = k => p => to3(p).map(x => x + k*LAY);
 
   // Plotted region: the non-negative orthant up to hi
   const impVerts = [[V-v['2']-v['3'], v['2'], v['3']], [v['1'], V-v['1']-v['3'], v['3']], [v['1'], v['2'], V-v['1']-v['2']]];
@@ -333,6 +336,7 @@ function update(){
   const vmax = Math.max(...vals), vmin = Math.min(...vals);
   const hi = vmax * 1.15 + 0.5;
   EPS = 1e-9 * (hi - Math.min(0, vmin) + 1);
+  LAY = 0.002 * hi;
 
   // Full (unclipped) core and imputation set — used for the numbers in the panel
   const padB = 0.2*(vmax - vmin) + 1;
@@ -357,9 +361,21 @@ function update(){
     const tip = [0,0,0]; tip[a] = axLen;
     traces.push(lineTrace([[0,0,0], tip], {line:{color:ink, width:7}, showlegend:false, name:'axis'}));
   }
-  traces.push({type:'cone', x:[axLen,0,0], y:[0,axLen,0], z:[0,0,axLen], u:[1,0,0], v:[0,1,0], w:[0,0,1],
-    anchor:'tip', sizemode:'absolute', sizeref:0.06*hi, colorscale:[[0,ink],[1,ink]], showscale:false,
-    hoverinfo:'skip', showlegend:false, lighting:{ambient:1, diffuse:0, specular:0}});
+  // Arrowheads as small hand-built cones (size is a fixed fraction of the axis length)
+  for (let a=0; a<3; a++){
+    const L = 0.05*hi, rad = 0.016*hi, seg = 16;
+    const o = [0,1,2].filter(k => k !== a);
+    const P = [[0,0,0],[0,0,0]]; P[0][a] = axLen; P[1][a] = axLen - L;   // tip, base centre
+    for (let s=0; s<seg; s++){
+      const q = [0,0,0]; q[a] = axLen - L;
+      q[o[0]] = rad*Math.cos(2*Math.PI*s/seg); q[o[1]] = rad*Math.sin(2*Math.PI*s/seg);
+      P.push(q);
+    }
+    const I=[],J=[],K=[];
+    for (let s=0; s<seg; s++){ const r1 = 2+s, r2 = 2+(s+1)%seg; I.push(0,1); J.push(r1,r2); K.push(r2,r1); }
+    traces.push({type:'mesh3d', ...cols(P), i:I, j:J, k:K, color:ink, opacity:1, flatshading:true,
+      lighting:{ambient:1, diffuse:0, specular:0, fresnel:0}, hoverinfo:'skip', showlegend:false, showscale:false});
+  }
   traces.push({type:'scatter3d', mode:'text', x:[axLen*1.07,0,0], y:[0,axLen*1.07,0], z:[0,0,axLen*1.07],
     text:['<b>A</b>','<b>B</b>','<b>C</b>'], textfont:{size:20, color:ink}, hoverinfo:'skip', showlegend:false});
   traces.push({type:'scatter3d', mode:'markers', x:[0], y:[0], z:[0], marker:{size:4, color:ink},
@@ -367,7 +383,7 @@ function update(){
 
   // Efficiency plane
   if (show('tEff') && effPoly.length >= 3){
-    traces.push(meshPoly(effPoly.map(to3), {color:muted, opacity:0.18, name:'x<sub>A</sub>+x<sub>B</sub>+x<sub>C</sub> = v(N)', showlegend:true}));
+    traces.push(meshPoly(effPoly.map(lift(-1)), {color:muted, opacity:0.18, name:'x<sub>A</sub>+x<sub>B</sub>+x<sub>C</sub> = v(N)', showlegend:true}));
   }
 
   // Constraint planes and lines
@@ -379,7 +395,7 @@ function update(){
     }
     if (show('tLines')){
       const seg = clipLine(c, box);
-      if (seg) traces.push(lineTrace(seg.map(to3), {line:{color:CCOL[c.id], width:5},
+      if (seg) traces.push(lineTrace(seg.map(lift(2)), {line:{color:CCOL[c.id], width:5},
         name:c.label, legendgroup:c.id, showlegend:true}));
     }
   }
@@ -392,12 +408,12 @@ function update(){
   }
 
   // Core
-  const core3 = corePoly.map(to3);
+  const core3 = corePoly.map(to3), coreUp = corePoly.map(lift(1));
   if (core3.length >= 3){
-    traces.push(meshPoly(core3, {color:coreCol, opacity:0.85, name:'Core', legendgroup:'core', showlegend:true}));
-    traces.push(lineTrace([...core3, core3[0]], {line:{color:coreCol, width:7}, legendgroup:'core', showlegend:false, name:'Core'}));
+    traces.push(meshPoly(coreUp, {color:coreCol, opacity:0.85, name:'Core', legendgroup:'core', showlegend:true}));
+    traces.push(lineTrace([...coreUp, coreUp[0]], {line:{color:coreCol, width:7}, legendgroup:'core', showlegend:false, name:'Core'}));
   } else if (core3.length === 2){
-    traces.push(lineTrace(core3, {line:{color:coreCol, width:10}, name:'Core (segment)', legendgroup:'core', showlegend:true}));
+    traces.push(lineTrace(coreUp, {line:{color:coreCol, width:10}, name:'Core (segment)', legendgroup:'core', showlegend:true}));
   }
   if (core3.length){
     traces.push({type:'scatter3d', mode:'markers', ...cols(core3), marker:{size:5, color:coreCol, line:{color:ink, width:1}},
